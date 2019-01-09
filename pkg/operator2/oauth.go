@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -17,10 +18,51 @@ import (
 	"github.com/openshift/library-go/pkg/operator/resource/resourcemerge"
 )
 
-func (c *authOperator) handleOAuthConfig(configOverrides []byte) (*corev1.ConfigMap, error) {
-	oauthConfig, err := c.oauth.Get(configName, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
+const (
+	defaultAccessTokenMaxAgeSeconds            = 24 * 60 * 60 // 1 day
+	defaultAccessTokenInactivityTimeoutSeconds = 5 * 60       // 5 min
+)
+
+func (c *authOperator) fetchOAuthConfig() (*configv1.OAuth, error) {
+	// Fetch any existing OAuth instance
+	existing, err := c.oauth.Get(c.configName, metav1.GetOptions{})
+	if err == nil || !apierrors.IsNotFound(err) {
+		// Existing instance found, or unknown error from api
+		return existing, err
+	}
+	// No existing instance found; attempt to create default
+	defaultOAuth := &configv1.OAuth{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   c.configName,
+			Labels: defaultLabels,
+			Annotations: map[string]string{
+				// TODO - better annotations & messaging to user about defaulting behavior
+				"message": "Default OAuth created by cluster-authentication-operator",
+			},
+		},
+		Spec: configv1.OAuthSpec{
+			IdentityProviders: []configv1.IdentityProvider{},
+			TokenConfig: configv1.TokenConfig{
+				AccessTokenMaxAgeSeconds:            defaultAccessTokenMaxAgeSeconds,
+				AccessTokenInactivityTimeoutSeconds: defaultAccessTokenInactivityTimeoutSeconds,
+			},
+		},
+		Status: configv1.OAuthStatus{},
+	}
+	created, err := c.oauth.Create(defaultOAuth)
+	if err == nil || !apierrors.IsAlreadyExists(err) {
+		// Created successfully, or unknown error from api
+		return created, err
+	}
+	// An OAuth instance must have been created between when we
+	// first checked and when we attempted to create the default.
+	// Find the existing instance, returning any errors trying to fetch it
+	return c.oauth.Get(c.configName, metav1.GetOptions{})
+}
+
+func (c *authOperator) configMapForOAuth(oauthConfig *configv1.OAuth, configOverrides []byte) (*corev1.ConfigMap, error) {
+	if oauthConfig == nil {
+		return nil, nil
 	}
 
 	var accessTokenInactivityTimeoutSeconds *int32
@@ -142,7 +184,11 @@ func (c *authOperator) handleOAuthConfig(configOverrides []byte) (*corev1.Config
 	}
 
 	return &corev1.ConfigMap{
-		ObjectMeta: defaultMeta(),
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      c.targetName,
+			Namespace: c.targetNamespace,
+			Labels:    defaultLabels,
+		},
 		Data: map[string]string{
 			configKey: string(completeConfigBytes),
 		},
