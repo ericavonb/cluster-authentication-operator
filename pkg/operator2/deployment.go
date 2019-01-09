@@ -23,7 +23,7 @@ func (c *authOperator) getGeneration() int64 {
 	return deployment.Generation
 }
 
-func defaultDeployment(resourceVersions ...string) *appsv1.Deployment {
+func defaultDeployment(targetName string, namespace string, resourceVersions ...string) *appsv1.Deployment {
 	replicas := int32(3) // TODO configurable?
 	gracePeriod := int64(30)
 
@@ -39,7 +39,11 @@ func defaultDeployment(resourceVersions ...string) *appsv1.Deployment {
 	rvsHashStr := base64.RawURLEncoding.EncodeToString(rvsHash[:])
 
 	deployment := &appsv1.Deployment{
-		ObjectMeta: defaultMeta(),
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      targetName,
+			Namespace: namespace,
+			Labels:    defaultLabels(),
+		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{
