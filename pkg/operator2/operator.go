@@ -9,6 +9,7 @@ import (
 	appsv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned"
 	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
@@ -120,63 +121,70 @@ func (c *osinOperator) Sync(obj metav1.Object) error {
 }
 
 func (c *osinOperator) handleSync(configOverrides []byte) error {
-	route, err := c.handleRoute()
-	if err != nil {
-		return err
-	}
+	glog.V(3).Infof("begin sync")
 
-	metadataConfigMap, _, err := resourceapply.ApplyConfigMap(c.configMaps, c.recorder, getMetadataConfigMap(route))
-	if err != nil {
-		return err
-	}
+	glog.V(4).Infof("using config overrides  %q", configOverrides)
 
-	auth, err := c.handleAuthConfig()
+	auth, err := c.fetchAuthConfig()
 	if err != nil {
 		return err
 	}
+	if auth.Spec.Type == configv1.AuthenticationTypeIntegratedOAuth {
+		oauth, err := c.fetchOAuthConfig()
+		if err != nil || oauth == nil {
+			return err
+		}
+		expectedOAuthConfigMap, err := c.configMapForOAuth(oauth, configOverrides)
+		if err != nil {
+			return err
+		}
 
-	service, _, err := resourceapply.ApplyService(c.services, c.recorder, defaultService())
-	if err != nil {
-		return err
-	}
+		route, err := c.handleRoute()
+		if err != nil {
+			return err
+		}
 
-	sessionSecret, err := c.expectedSessionSecret()
-	if err != nil {
-		return err
-	}
-	secret, _, err := resourceapply.ApplySecret(c.secrets, c.recorder, sessionSecret)
-	if err != nil {
-		return err
-	}
+		metadataConfigMap, _, err := resourceapply.ApplyConfigMap(c.configMaps, c.recorder, getMetadataConfigMap(route))
+		if err != nil {
+			return err
+		}
 
-	expectedOAuthConfigMap, err := c.handleOAuthConfig(configOverrides)
-	if err != nil {
-		return err
-	}
-	configMap, _, err := resourceapply.ApplyConfigMap(c.configMaps, c.recorder, expectedOAuthConfigMap)
-	if err != nil {
-		return err
-	}
+		service, _, err := resourceapply.ApplyService(c.services, c.recorder, defaultService())
+		if err != nil {
+			return err
+		}
 
-	// deployment, have RV of all resources
-	// TODO use ExpectedDeploymentGeneration func
-	// TODO probably do not need every RV
-	expectedDeployment := defaultDeployment(
-		route.ResourceVersion,
-		metadataConfigMap.ResourceVersion,
-		auth.ResourceVersion,
-		service.ResourceVersion,
-		secret.ResourceVersion,
-		configMap.ResourceVersion,
-	)
-	deployment, _, err := resourceapply.ApplyDeployment(c.deployments, c.recorder, expectedDeployment, c.getGeneration(), false)
-	if err != nil {
-		return err
+		sessionSecret, err := c.expectedSessionSecret()
+		if err != nil {
+			return err
+		}
+		secret, _, err := resourceapply.ApplySecret(c.secrets, c.recorder, sessionSecret)
+		if err != nil {
+			return err
+		}
+		configMap, _, err := resourceapply.ApplyConfigMap(c.configMaps, c.recorder, expectedOAuthConfigMap)
+		if err != nil {
+			return err
+		}
+
+		// deployment, have RV of all resources
+		// TODO use ExpectedDeploymentGeneration func
+		// TODO probably do not need every RV
+		expectedDeployment := defaultDeployment(
+			route.ResourceVersion,
+			metadataConfigMap.ResourceVersion,
+			auth.ResourceVersion,
+			service.ResourceVersion,
+			secret.ResourceVersion,
+			configMap.ResourceVersion,
+		)
+		_, _, err = resourceapply.ApplyDeployment(c.deployments, c.recorder, expectedDeployment, c.getGeneration(), false)
+		if err != nil {
+			return err
+		}
 	}
-
-	glog.V(4).Infof("current deployment: %#v", deployment)
-
-	return nil
+	_, err = c.updateAuthStatus(auth)
+	return err
 }
 
 func defaultLabels() map[string]string {

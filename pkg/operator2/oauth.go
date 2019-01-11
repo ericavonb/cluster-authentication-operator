@@ -2,9 +2,11 @@ package operator2
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -13,14 +15,77 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	kubecontrolplanev1 "github.com/openshift/api/kubecontrolplane/v1"
 	osinv1 "github.com/openshift/api/osin/v1"
+	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/resource/resourcemerge"
 )
 
-func (c *osinOperator) handleOAuthConfig(configOverrides []byte) (*corev1.ConfigMap, error) {
-	oauthConfig, err := c.oauth.Get(configName, metav1.GetOptions{})
+const (
+	defaultAccessTokenMaxAgeSeconds            = 24 * 60 * 60 // 1 day
+	defaultAccessTokenInactivityTimeoutSeconds = 5 * 60       // 5 min
+)
+
+// TODO make static or replace globals with input parameters
+func defaultOAuth() *configv1.OAuth {
+	return &configv1.OAuth{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   configName,
+			Labels: defaultLabels(),
+			Annotations: map[string]string{
+				// TODO - better annotations & messaging to user about defaulting behavior
+				"message": "Default OAuth created by cluster-authentication-operator",
+			},
+		},
+		Spec: configv1.OAuthSpec{
+			IdentityProviders: []configv1.IdentityProvider{},
+			TokenConfig: configv1.TokenConfig{
+				AccessTokenMaxAgeSeconds:            defaultAccessTokenMaxAgeSeconds,
+				AccessTokenInactivityTimeoutSeconds: defaultAccessTokenInactivityTimeoutSeconds,
+			},
+		},
+		Status: configv1.OAuthStatus{},
+	}
+}
+func findOrCreateOAuth(oauthClient configv1client.OAuthInterface, oauth *configv1.OAuth) (*configv1.OAuth, error) {
+	// Parameter validation
+	if oauthClient == nil {
+		return nil, errors.New("invalid OAuthenticationInterface client: <nil>")
+	}
+	if oauth == nil {
+		return nil, errors.New("invalid auth paramenter: <nil>")
+	}
+
+	// Fetch any existing OAuth instance
+	existing, err := oauthClient.Get(oauth.GetName(), metav1.GetOptions{})
 	if err != nil {
-		return nil, err
+		if !apierrors.IsNotFound(err) {
+			// Unknown error from api
+			return nil, err
+		}
+		// No existing instance found; attempt to create default
+		created, err := oauthClient.Create(oauth)
+		if err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				// Unknown error from api
+				return nil, err
+			}
+			// An OAuth instance must have been created between when we
+			// first checked and when we attempted to create the default.
+			// Find the existing instance, returning any errors trying to fetch it
+			return oauthClient.Get(oauth.GetName(), metav1.GetOptions{})
+		}
+		// Default successfully created - return the new OAuth instance
+		return created, err
+	}
+	// Existing OAuth instance found. Return it
+	return existing, nil
+}
+func (c *osinOperator) fetchOAuthConfig() (*configv1.OAuth, error) {
+	return findOrCreateOAuth(c.oauth, defaultOAuth())
+}
+func (c *osinOperator) configMapForOAuth(oauthConfig *configv1.OAuth, configOverrides []byte) (*corev1.ConfigMap, error) {
+	if oauthConfig == nil {
+		return nil, nil
 	}
 
 	var accessTokenInactivityTimeoutSeconds *int32

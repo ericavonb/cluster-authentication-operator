@@ -2,6 +2,7 @@ package operator2
 
 import (
 	"errors"
+	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -58,7 +59,7 @@ func findOrCreateAuth(authClient configv1client.AuthenticationInterface, auth *c
 			// An Authentication instance must have been created between when we
 			// first checked and when we attempted to create the default.
 			// Find the existing instance, returning any errors trying to fetch it
-			return authClient.Get(configName, metav1.GetOptions{})
+			return authClient.Get(auth.GetName(), metav1.GetOptions{})
 		}
 		// Default successfully created - return the new Authentication instance
 		return created, err
@@ -66,24 +67,28 @@ func findOrCreateAuth(authClient configv1client.AuthenticationInterface, auth *c
 	// Existing Authentication instance found. Return it
 	return existing, nil
 }
-
-func (c *osinOperator) handleAuthConfig() (*configv1.Authentication, error) {
-	auth, err := findOrCreateAuth(c.authentication, defaultAuth())
-	if err != nil {
-		return nil, err
-	}
-	if auth.Spec.Type != configv1.AuthenticationTypeIntegratedOAuth {
+func (c *osinOperator) fetchAuthConfig() (*configv1.Authentication, error) {
+	return findOrCreateAuth(c.authentication, defaultAuth())
+}
+func (c *osinOperator) updateAuthStatus(auth *configv1.Authentication) (*configv1.Authentication, error) {
+	if auth == nil {
 		return nil, nil
 	}
-
-	expectedReference := configv1.ConfigMapNameReference{
-		Name: targetName,
+	var expectedRef configv1.ConfigMapNameReference
+	switch auth.Spec.Type {
+	case configv1.AuthenticationTypeNone:
+		expectedRef = auth.Spec.OAuthMetadata
+	case configv1.AuthenticationTypeIntegratedOAuth:
+		expectedRef = configv1.ConfigMapNameReference{
+			Name: targetName,
+		}
+	default:
+		return nil, fmt.Errorf("unknown AuthenticationType '%s'", auth.Spec.Type)
 	}
 
-	if auth.Status.IntegratedOAuthMetadata == expectedReference {
-		return auth, nil
+	if auth.Status.IntegratedOAuthMetadata != expectedRef {
+		auth.Status.IntegratedOAuthMetadata = expectedRef
+		return c.authentication.UpdateStatus(auth)
 	}
-
-	auth.Status.IntegratedOAuthMetadata = expectedReference
-	return c.authentication.UpdateStatus(auth)
+	return auth, nil
 }
