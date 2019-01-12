@@ -12,11 +12,11 @@ import (
 )
 
 // TODO make static or replace globals with input parameters
-func defaultAuth() *configv1.Authentication {
+func defaultAuth(name string) *configv1.Authentication {
 	return &configv1.Authentication{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   configName,
-			Labels: defaultLabels(),
+			Name:   name,
+			Labels: defaultLabels,
 			Annotations: map[string]string{
 				// TODO - better annotations & messaging to user about defaulting behavior
 				"message": "Default Authentication created by cluster-authentication-operator",
@@ -68,7 +68,7 @@ func findOrCreateAuth(authClient configv1client.AuthenticationInterface, auth *c
 	return existing, nil
 }
 func (c *osinOperator) fetchAuthConfig() (*configv1.Authentication, error) {
-	return findOrCreateAuth(c.authentication, defaultAuth())
+	return findOrCreateAuth(c.authentication, defaultAuth(c.configName))
 }
 func (c *osinOperator) updateAuthStatus(auth *configv1.Authentication) (*configv1.Authentication, error) {
 	if auth == nil {

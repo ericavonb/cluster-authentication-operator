@@ -30,7 +30,7 @@ func defaultOAuth() *configv1.OAuth {
 	return &configv1.OAuth{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   configName,
-			Labels: defaultLabels(),
+			Labels: defaultLabels,
 			Annotations: map[string]string{
 				// TODO - better annotations & messaging to user about defaulting behavior
 				"message": "Default OAuth created by cluster-authentication-operator",
@@ -207,7 +207,11 @@ func (c *osinOperator) configMapForOAuth(oauthConfig *configv1.OAuth, configOver
 	}
 
 	return &corev1.ConfigMap{
-		ObjectMeta: defaultMeta(),
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      c.targetName,
+			Namespace: c.targetNamespace,
+			Labels:    defaultLabels,
+		},
 		Data: map[string]string{
 			configKey: string(completeConfigBytes),
 		},

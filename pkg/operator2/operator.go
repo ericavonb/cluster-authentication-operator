@@ -32,11 +32,24 @@ const (
 	sessionKey  = "session"
 	sessionPath = "/var/session"
 
-	configName      = "cluster"
-	configNamespace = "openshift-managed-config"
+	configName             = "cluster"
+	configNamespace        = "openshift-config"
+	managedConfigNamespace = "openshift-managed-config"
+)
+
+var (
+	defaultLabels = map[string]string{
+		"app": "cluster-authentication-operator",
+	}
 )
 
 type osinOperator struct {
+	targetNamespace        string
+	targetName             string
+	configName             string
+	configNamespace        string
+	managedConfigNamespace string
+
 	osin osinclient.OsinInterface
 
 	recorder events.Recorder
@@ -64,6 +77,12 @@ func NewOsinOperator(
 	recorder events.Recorder,
 ) operator.Runner {
 	c := &osinOperator{
+		targetNamespace:        targetName,
+		targetName:             targetName,
+		configName:             configName,
+		configNamespace:        configNamespace,
+		managedConfigNamespace: managedConfigNamespace,
+
 		osin: osinsClient.Osins(targetName),
 
 		recorder: recorder,
@@ -144,12 +163,12 @@ func (c *osinOperator) handleSync(configOverrides []byte) error {
 			return err
 		}
 
-		metadataConfigMap, _, err := resourceapply.ApplyConfigMap(c.configMaps, c.recorder, getMetadataConfigMap(route))
+		_, _, err = resourceapply.ApplyConfigMap(c.configMaps, c.recorder, getMetadataConfigMap(c.targetName, c.managedConfigNamespace, route))
 		if err != nil {
 			return err
 		}
 
-		service, _, err := resourceapply.ApplyService(c.services, c.recorder, defaultService())
+		_, _, err = resourceapply.ApplyService(c.services, c.recorder, defaultService(c.targetName, c.targetNamespace))
 		if err != nil {
 			return err
 		}
@@ -171,10 +190,8 @@ func (c *osinOperator) handleSync(configOverrides []byte) error {
 		// TODO use ExpectedDeploymentGeneration func
 		// TODO probably do not need every RV
 		expectedDeployment := defaultDeployment(
-			route.ResourceVersion,
-			metadataConfigMap.ResourceVersion,
-			auth.ResourceVersion,
-			service.ResourceVersion,
+			c.targetName,
+			c.targetNamespace,
 			secret.ResourceVersion,
 			configMap.ResourceVersion,
 		)
@@ -185,19 +202,4 @@ func (c *osinOperator) handleSync(configOverrides []byte) error {
 	}
 	_, err = c.updateAuthStatus(auth)
 	return err
-}
-
-func defaultLabels() map[string]string {
-	return map[string]string{
-		"app": "origin-cluster-osin-operator2",
-	}
-}
-
-func defaultMeta() metav1.ObjectMeta {
-	return metav1.ObjectMeta{
-		Name:            targetName,
-		Namespace:       targetName,
-		Labels:          defaultLabels(),
-		OwnerReferences: nil, // TODO
-	}
 }
