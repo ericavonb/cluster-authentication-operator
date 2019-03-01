@@ -132,3 +132,17 @@ build-rpms:
 build-images:
 	hack/build-images.sh
 .PHONY: build-images
+
+
+# Generate test coverage reports
+$(OUT_DIR)/cover.out:
+	go test -v -race -tags=json1 -coverprofile=$(OUT_DIR)/cover.out \
+		-covermode=atomic -coverpkg ./pkg/... ./pkg/...
+
+coverage: $(OUT_DIR)/cover.out
+	go tool cover -func=$(OUT_DIR)/cover.out
+.PHONY: coverage
+
+coverage-html: $(OUT_DIR)/cover.out
+	go tool cover -html=$(OUT_DIR)/cover.out
+.PHONY: coverage-html
