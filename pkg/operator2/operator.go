@@ -12,6 +12,8 @@ import (
 	appsv1client "k8s.io/client-go/kubernetes/typed/apps/v1"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	monitoringclient "github.com/coreos/prometheus-operator/pkg/client/versioned"
+	monitoringv1client "github.com/coreos/prometheus-operator/pkg/client/versioned/typed/monitoring/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned"
 	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
@@ -32,6 +34,8 @@ const (
 
 	machineConfigNamespace = "openshift-config-managed"
 	userConfigNamespace    = "openshift-config"
+
+	monitoringNamespace = "openshift-monitoring"
 
 	systemConfigPath           = "/var/config/system"
 	systemConfigPathConfigMaps = systemConfigPath + "/configmaps"
@@ -95,10 +99,11 @@ type authOperator struct {
 
 	route routeclient.RouteInterface
 
-	services    corev1client.ServicesGetter
-	secrets     corev1client.SecretsGetter
-	configMaps  corev1client.ConfigMapsGetter
-	deployments appsv1client.DeploymentsGetter
+	services        corev1client.ServicesGetter
+	secrets         corev1client.SecretsGetter
+	configMaps      corev1client.ConfigMapsGetter
+	deployments     appsv1client.DeploymentsGetter
+	servicemonitors monitoringv1client.ServiceMonitorsGetter
 
 	authentication configv1client.AuthenticationInterface
 	oauth          configv1client.OAuthInterface
@@ -116,6 +121,7 @@ func NewAuthenticationOperator(
 	routeClient routeclient.RouteV1Interface,
 	configInformers configinformer.SharedInformerFactory,
 	configClient configclient.Interface,
+	monitoringClient monitoringclient.Interface,
 	recorder events.Recorder,
 	resourceSyncer resourcesynccontroller.ResourceSyncer,
 ) operator.Runner {
@@ -126,10 +132,11 @@ func NewAuthenticationOperator(
 
 		route: routeClient.Routes(targetName),
 
-		services:    kubeClient.CoreV1(),
-		secrets:     kubeClient.CoreV1(),
-		configMaps:  kubeClient.CoreV1(),
-		deployments: kubeClient.AppsV1(),
+		services:        kubeClient.CoreV1(),
+		secrets:         kubeClient.CoreV1(),
+		configMaps:      kubeClient.CoreV1(),
+		deployments:     kubeClient.AppsV1(),
+		servicemonitors: monitoringClient.MonitoringV1(),
 
 		authentication: configClient.ConfigV1().Authentications(),
 		oauth:          configClient.ConfigV1().OAuths(),
@@ -298,6 +305,17 @@ func (c *authOperator) handleSync(operatorConfig *operatorv1.Authentication) err
 	}
 
 	glog.V(4).Infof("current deployment: %#v", deployment)
+
+	// ==================================
+	// BLOCK 5: ServiceMonitor
+	// ==================================
+
+	// Create ServiceMonitor last because it needs to wait for the cluster-monitoring-operator
+	// to create the namespace and CRDs
+	_, err := c.handleServiceMonitor(service) // TODO record servicemonitor creation in status
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

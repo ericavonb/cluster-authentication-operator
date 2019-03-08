@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 
+	monitoringclient "github.com/coreos/prometheus-operator/pkg/client/versioned"
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned"
@@ -69,24 +70,24 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 	if err != nil {
 		return err
 	}
-
 	dynamicClient, err := dynamic.NewForConfig(ctx.KubeConfig)
 	if err != nil {
 		return err
 	}
-
 	authConfigClient, err := authopclient.NewForConfig(ctx.KubeConfig)
 	if err != nil {
 		return err
 	}
-
 	// protobuf can be used with non custom resources
 	routeClient, err := routeclient.NewForConfig(ctx.ProtoKubeConfig)
 	if err != nil {
 		return err
 	}
-
 	configClient, err := configclient.NewForConfig(ctx.KubeConfig)
+	if err != nil {
+		return err
+	}
+	monitoringClient, err := monitoringclient.NewForConfig(ctx.KubeConfig)
 	if err != nil {
 		return err
 	}
@@ -156,6 +157,7 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		routeClient.RouteV1(),
 		configInformers,
 		configClient,
+		monitoringClient,
 		ctx.EventRecorder,
 		resourceSyncer,
 	)
