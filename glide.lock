@@ -1,5 +1,5 @@
-hash: 76437cbed780eca1679f417dd7912534ad7b08519dfdc51048b197c623134342
-updated: 2019-02-28T09:45:52.560999237-05:00
+hash: 04bd971985765da6001771a4123b7822f1b5501d03591311c1eb345e69f6a49c
+updated: 2019-03-07T19:34:00.972401-08:00
 imports:
 - name: bitbucket.org/ww/goautoneg
   version: 75cd24fc2f2c2a2088577d12123ddee5f54e0675
@@ -98,6 +98,14 @@ imports:
   subpackages:
   - daemon
   - journal
+- name: github.com/coreos/prometheus-operator
+  version: 7a25bf6b6bb2347dacb235659b73bc210117acc7
+  subpackages:
+  - pkg/apis/monitoring
+  - pkg/apis/monitoring/v1
+  - pkg/client/versioned
+  - pkg/client/versioned/scheme
+  - pkg/client/versioned/typed/monitoring/v1
 - name: github.com/davecgh/go-spew
   version: 782f4967f2dc4564575ca782fe2d04090b5faca8
   subpackages:
@@ -196,7 +204,7 @@ imports:
 - name: github.com/NYTimes/gziphandler
   version: 56545f4a5d46df9a6648819d1664c3a03a13ffdb
 - name: github.com/openshift/api
-  version: c58918e29f89383d2e1467bad7156e2b0c49497f
+  version: 600a5519d1ec56e02c20f42b43888db560bdcb7e
   subpackages:
   - apps
   - apps/v1
@@ -242,7 +250,7 @@ imports:
   - webconsole
   - webconsole/v1
 - name: github.com/openshift/client-go
-  version: 31ef839c86359881d2c312c4f0131febc6662400
+  version: 2d89985ca24a8307e4b5db2574a62d3e6c2444b4
   subpackages:
   - config/clientset/versioned
   - config/clientset/versioned/scheme
@@ -269,7 +277,7 @@ imports:
   - route/informers/externalversions/route/v1
   - route/listers/route/v1
 - name: github.com/openshift/library-go
-  version: 06acf0d9e585169e897fe98f342788da9284a6ed
+  version: 10585fdc9322d30d622279729036a07f1ff7bbe1
   subpackages:
   - pkg/config/client
   - pkg/config/clusteroperator/v1helpers
@@ -281,6 +289,7 @@ imports:
   - pkg/controller/metrics
   - pkg/crypto
   - pkg/operator/events
+  - pkg/operator/management
   - pkg/operator/resource/resourceapply
   - pkg/operator/resource/resourcemerge
   - pkg/operator/resourcesynccontroller
@@ -320,9 +329,9 @@ imports:
 - name: github.com/sirupsen/logrus
   version: 89742aefa4b206dcf400792f3bd35b542998eb3b
 - name: github.com/spf13/cobra
-  version: 7547e83b2d85fd1893c7d76916f67689d761fecb
+  version: c439c4fa093711d42e1b01acb1235b52004753c1
 - name: github.com/spf13/pflag
-  version: 24fa6976df40757dce6aea913e7b81ade90530e1
+  version: 583c0c0531f06d5278b7d917446061adc344b5cd
 - name: github.com/ugorji/go
   version: ded73eae5db7e7a0ef6f55aace87a2873c5d2b74
   subpackages:
@@ -378,7 +387,7 @@ imports:
   subpackages:
   - rate
 - name: golang.org/x/tools
-  version: f0a709d59f0fd2d705cf7767149e23a7a99f585b
+  version: 6a08e3108db3c45254bbacc63c70c6addc62e6cb
   subpackages:
   - imports
 - name: google.golang.org/appengine
